@@ -1,0 +1,570 @@
+openapi: 3.0.3
+info:
+  title: Black Red Messenger API
+  version: 1.0.0
+  description: |
+    REST API для мобильного мессенджера с JWT, чатами, сообщениями,
+    realtime-интеграцией через Socket.io и push-уведомлениями через FCM.
+servers:
+  - url: http://localhost:8080
+
+tags:
+  - name: Health
+  - name: Auth
+  - name: Profile
+  - name: Chats
+  - name: Messages
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      responses:
+        '200':
+          description: Service health
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: User exists
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Логин по email/phone + password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      summary: Текущий пользователь
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/profile:
+    patch:
+      tags: [Profile]
+      security:
+        - bearerAuth: []
+      summary: Обновление профиля
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdateRequest'
+      responses:
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+
+  /api/profile/fcm-token:
+    post:
+      tags: [Profile]
+      security:
+        - bearerAuth: []
+      summary: Регистрация FCM токена
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        '204':
+          description: Registered
+
+  /api/chats:
+    get:
+      tags: [Chats]
+      security:
+        - bearerAuth: []
+      summary: Список чатов
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Chats list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chats:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Chat'
+
+  /api/chats/direct:
+    post:
+      tags: [Chats]
+      security:
+        - bearerAuth: []
+      summary: Создать direct chat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [peerUserId]
+              properties:
+                peerUserId:
+                  type: string
+      responses:
+        '201':
+          description: Chat created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chat:
+                    $ref: '#/components/schemas/Chat'
+
+  /api/chats/group:
+    post:
+      tags: [Chats]
+      security:
+        - bearerAuth: []
+      summary: Создать group chat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, memberIds]
+              properties:
+                title:
+                  type: string
+                memberIds:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '201':
+          description: Chat created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chat:
+                    $ref: '#/components/schemas/Chat'
+
+  /api/chats/{chatId}/messages:
+    get:
+      tags: [Chats]
+      security:
+        - bearerAuth: []
+      summary: Сообщения чата
+      parameters:
+        - name: chatId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Message history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+
+  /api/chats/{chatId}/pin:
+    post:
+      tags: [Chats]
+      security:
+        - bearerAuth: []
+      summary: Закрепить чат
+      parameters:
+        - name: chatId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Pinned
+    delete:
+      tags: [Chats]
+      security:
+        - bearerAuth: []
+      summary: Открепить чат
+      parameters:
+        - name: chatId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Unpinned
+
+  /api/messages:
+    post:
+      tags: [Messages]
+      security:
+        - bearerAuth: []
+      summary: Отправка текстового сообщения
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chatId]
+              properties:
+                chatId:
+                  type: string
+                text:
+                  type: string
+      responses:
+        '201':
+          description: Sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    $ref: '#/components/schemas/Message'
+
+  /api/messages/image:
+    post:
+      tags: [Messages]
+      security:
+        - bearerAuth: []
+      summary: Отправка изображения
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [chatId, file]
+              properties:
+                chatId:
+                  type: string
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Sent image
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    $ref: '#/components/schemas/Message'
+
+  /api/messages/{messageId}:
+    patch:
+      tags: [Messages]
+      security:
+        - bearerAuth: []
+      summary: Редактировать сообщение
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    $ref: '#/components/schemas/Message'
+    delete:
+      tags: [Messages]
+      security:
+        - bearerAuth: []
+      summary: Удалить сообщение
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Deleted
+
+  /api/messages/{messageId}/read:
+    post:
+      tags: [Messages]
+      security:
+        - bearerAuth: []
+      summary: Отметить сообщение прочитанным
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Read
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [password, displayName]
+      properties:
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        password:
+          type: string
+          minLength: 6
+        displayName:
+          type: string
+
+    LoginRequest:
+      type: object
+      required: [password]
+      properties:
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        password:
+          type: string
+
+    AuthResponse:
+      type: object
+      required: [token, user]
+      properties:
+        token:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        displayName:
+          type: string
+        avatarUrl:
+          type: string
+        bio:
+          type: string
+        status:
+          type: string
+          enum: [online, offline, away]
+        lastSeenAt:
+          type: string
+          format: date-time
+
+    ProfileUpdateRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+        bio:
+          type: string
+        avatarUrl:
+          type: string
+
+    Chat:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [direct, group]
+        title:
+          type: string
+        avatarUrl:
+          type: string
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        admins:
+          type: array
+          items:
+            type: string
+        pinned:
+          type: boolean
+        updatedAt:
+          type: string
+          format: date-time
+        lastMessage:
+          $ref: '#/components/schemas/Message'
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+        chatId:
+          type: string
+        senderId:
+          type: string
+        text:
+          type: string
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attachment'
+        editedAt:
+          type: string
+          format: date-time
+          nullable: true
+        deletedForEveryone:
+          type: boolean
+        readBy:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReadReceipt'
+        createdAt:
+          type: string
+          format: date-time
+
+    Attachment:
+      type: object
+      properties:
+        fileName:
+          type: string
+        url:
+          type: string
+        mimeType:
+          type: string
+        size:
+          type: integer
+
+    ReadReceipt:
+      type: object
+      properties:
+        userId:
+          type: string
+        readAt:
+          type: string
+          format: date-time
